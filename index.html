@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<!-- ダブルタップズーム防止：最大倍率1＆ユーザー拡大不可 -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>お買い物シミュレーター</title>
+<style>
+  :root{
+    --bg:#f4f6fb; --panel:#fff; --text:#111; --muted:#666;
+    --btn:#4caf50; --btn2:#1f6feb; --danger:#e53935; --border:#e5e7eb;
+    --paper:#fffef8; --ink:#0b0b0b; --ink-soft:#3a3a3a;
+  }
+  *{box-sizing:border-box}
+  body{
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial;
+    background:var(--bg); color:var(--text); margin:0;
+    /* ダブルタップ操作は“操作”として扱い、ズームを誘発しにくく */
+    touch-action: manipulation;
+  }
+  .container{max-width:860px;margin:0 auto;padding:20px}
+  .panel{background:var(--panel); border:1px solid var(--border); border-radius:12px; box-shadow:0 6px 20px rgba(0,0,0,.06); padding:20px; margin-bottom:18px}
+  h1,h2{margin:0 0 12px}
+  .btn{cursor:pointer; border:none; border-radius:8px; padding:10px 14px; color:#fff}
+  .btn.green{background:var(--btn)}
+  .btn.blue{background:var(--btn2)}
+  .btn.red{background:var(--danger)}
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px}
+  .card{background:#fafafa;border:1px solid #e2e8f0;border-radius:10px;padding:12px;text-align:center}
+  .row{display:flex; gap:10px; flex-wrap:wrap}
+  .row > *{flex:1 1 240px}
+  input{width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:8px}
+  .cart-btn{position:relative}
+  .cart-count{position:absolute; top:-6px; right:-6px; background:#e11d48; color:#fff; border-radius:999px; padding:2px 7px; font-size:12px; min-width:20px; text-align:center}
+  table{width:100%; border-collapse:collapse}
+  th,td{padding:8px 10px; border-bottom:1px solid #e5e7eb; text-align:left}
+
+  /* --- テンキー --- */
+  .numpad{
+    display:grid; grid-template-columns:repeat(3,1fr);
+    gap:8px; margin-top:12px;
+  }
+  .numpad button{
+    padding:16px; font-size:18px; border:none; border-radius:8px; background:#e2e8f0; cursor:pointer;
+    touch-action: manipulation; /* ボタン単体でもズーム抑止 */
+  }
+  .numpad button:active{background:#cbd5e1}
+  .display{
+    font-size:22px; font-weight:700; text-align:right; padding:10px; margin-top:8px;
+    border:1px solid #cbd5e1; border-radius:8px; background:#f8fafc;
+  }
+
+  /* ===== 感熱レシート風 ===== */
+  .receipt-wrap{ display:flex; justify-content:center; }
+  .receipt{
+    width:320px; margin:0 auto; color:var(--ink); background:
+      linear-gradient(180deg,rgba(0,0,0,.03),rgba(0,0,0,0)) 0 0/100% 10px no-repeat,
+      radial-gradient(120% 20px at 50% 0, rgba(0,0,0,.08), transparent 60%) no-repeat,
+      var(--paper);
+    border:1px solid #e9e4d8; border-radius:10px; padding:14px 14px 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", "Courier New", monospace;
+    box-shadow: 0 10px 25px rgba(0,0,0,.12); position:relative;
+  }
+  .receipt:before, .receipt:after{
+    content:""; position:absolute; left:0; right:0; height:8px;
+    background: repeating-linear-gradient(90deg, transparent 0 6px, rgba(0,0,0,.08) 6px 7px, transparent 7px 13px);
+  }
+  .receipt:before{ top:-6px; } .receipt:after{ bottom:-6px; }
+  .r-title{ text-align:center; font-weight:700; letter-spacing:.08em; margin-bottom:6px }
+  .r-sub{ text-align:center; font-size:12px; color:var(--ink-soft); margin-bottom:8px }
+  .r-kv{ display:grid; grid-template-columns: 1fr auto; gap:4px 8px; font-size:12px; color:#333; margin-bottom:8px }
+  .r-line{ border-top:1px dashed #cfcab8; margin:6px 0 }
+  .r-items{ display:grid; grid-template-columns: 1fr auto; row-gap:6px; column-gap:8px; font-size:14px }
+  .r-items small{ color:#666 }
+  .r-sum{ display:grid; grid-template-columns: 1fr auto; gap:6px 8px; font-size:14px; margin-top:6px }
+  .r-strong{ font-weight:800 }
+  .r-barcode{
+    margin:10px auto 0; height:42px; width:85%;
+    background: repeating-linear-gradient(90deg, #111 0 2px, transparent 2px 4px, #111 4px 6px, transparent 6px 8px);
+    border-radius:3px; opacity:.75;
+  }
+  .status{margin-top:12px;padding:10px;border-radius:8px;text-align:center}
+  .ok{background:#e8f6ee}
+  .bad{background:#fde8e8}
+  .footer{display:flex;gap:10px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
+
+  @media print {
+    body{background:#fff}
+    .panel{box-shadow:none;border:none}
+    .receipt{box-shadow:none}
+    .footer{display:none}
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- 1) スタート画面（名前＋テンキー所持金） -->
+  <div id="startPanel" class="panel">
+    <h1>🛒 買い物シミュレーター</h1>
+    <p>プレイヤー名と所持金を入力してください。</p>
+    <div class="row">
+      <div>
+        <label>プレイヤー名</label>
+        <input type="text" id="nameInput" placeholder="例：Aさん / チーム1" />
+      </div>
+      <div>
+        <label style="margin-top:12px;display:block">所持金（円）</label>
+        <div id="walletDisplay" class="display">0</div>
+        <div class="numpad">
+          <button>7</button><button>8</button><button>9</button>
+          <button>4</button><button>5</button><button>6</button>
+          <button>1</button><button>2</button><button>3</button>
+          <button>0</button><button>00</button><button>←</button>
+          <button style="grid-column:1/4;background:#f87171;color:#fff">C</button>
+        </div>
+      </div>
+    </div>
+    <small style="color:#666">※ 商品リストでは価格は表示されません。会計後のレシートで初めて表示されます。</small><br><br>
+    <button id="startBtn" class="btn green">開始</button>
+  </div>
+
+  <!-- 2) 商品リスト（価格非表示） -->
+  <div id="shopPanel" class="panel" style="display:none">
+    <h2>商品リスト</h2>
+    <button id="openCartBtn" class="btn blue cart-btn">カート <span id="cartCount" class="cart-count">0</span></button>
+    <div id="productGrid" class="grid" style="margin-top:14px"></div>
+  </div>
+
+  <!-- 3) カート（合計は会計時まで非表示） -->
+  <div id="cartPanel" class="panel" style="display:none">
+    <h2>カート</h2>
+    <div id="cartEmpty">カートは空です。</div>
+    <table id="cartTable" style="display:none">
+      <thead><tr><th>商品</th><th>数量</th><th>操作</th></tr></thead>
+      <tbody id="cartBody"></tbody>
+    </table>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <small style="margin-right:auto;color:#64748b">※ 合計金額は会計時にのみ開示します。</small>
+      <button id="checkoutBtn" class="btn green">会計する</button>
+    </div>
+  </div>
+
+  <!-- 4) レシート専用画面 -->
+  <div id="finalPanel" class="panel" style="display:none">
+    <h2>レシート</h2>
+    <div class="receipt-wrap">
+      <div id="receiptPaper" class="receipt" aria-label="購入レシート">
+        <div class="r-title">Hello Market</div>
+        <div class="r-sub">– いつもご利用ありがとうございます –</div>
+        <div class="r-kv" id="rMeta"></div>
+        <div class="r-line"></div>
+        <div class="r-items" id="rItems"></div>
+        <div class="r-line"></div>
+        <div class="r-sum" id="rSum"></div>
+        <div class="r-barcode" aria-hidden="true"></div>
+      </div>
+    </div>
+    <div id="finalStatus" class="status" role="status" aria-live="polite"></div>
+    <div class="footer">
+      <button id="saveBtn" class="btn blue">発行（画像保存）</button>
+      <button id="retryBtn" class="btn green">リトライ</button>
+      <button id="resetBtn" class="btn red">リセット</button>
+    </div>
+  </div>
+</div>
+
+<!-- html2canvas（画像保存用） -->
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script>
+/* ====== 設定：価格は内部のみ ====== */
+const products = [
+  { id:'p_apple',   name:'りんご',      price:120 },
+  { id:'p_banana',  name:'バナナ',      price:90  },
+  { id:'p_bread',   name:'食パン',      price:180 },
+  { id:'p_milk',    name:'牛乳',        price:160 },
+  { id:'p_snack',   name:'お菓子',      price:150 },
+  { id:'p_water',   name:'水(2L)',      price:100 },
+  { id:'p_bento',   name:'お弁当',      price:498 },
+];
+
+let wallet=null, playerName='', cart={}, checkedOut=false;
+
+/* ====== 要素 ====== */
+const startPanel=document.getElementById('startPanel');
+const shopPanel=document.getElementById('shopPanel');
+const cartPanel=document.getElementById('cartPanel');
+const finalPanel=document.getElementById('finalPanel');
+
+const productGrid=document.getElementById('productGrid');
+const cartCnt=document.getElementById('cartCount');
+const cartBody=document.getElementById('cartBody');
+const cartEmpty=document.getElementById('cartEmpty');
+const cartTable=document.getElementById('cartTable');
+
+const receiptPaper=document.getElementById('receiptPaper');
+const rMeta=document.getElementById('rMeta');
+const rItems=document.getElementById('rItems');
+const rSum=document.getElementById('rSum');
+const finalStatus=document.getElementById('finalStatus');
+
+/* ====== util ====== */
+const yen = n => n.toLocaleString('ja-JP');
+const esc = s => String(s).replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const nowStr = () => {
+  const d = new Date();
+  const z = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`;
+};
+
+/* ====== ダブルタップズーム抑止（iOS/Safari対策） ====== */
+let lastTouchEnd = 0;
+document.addEventListener('touchend', (e)=>{
+  const now = Date.now();
+  if(now - lastTouchEnd <= 300){
+    e.preventDefault(); // 直前タップから300ms以内はズームさせない
+  }
+  lastTouchEnd = now;
+}, {passive:false});
+document.addEventListener('dblclick', (e)=> e.preventDefault(), {passive:false});
+
+/* ====== テンキー入力処理 ====== */
+const walletDisplay = document.getElementById('walletDisplay');
+document.querySelectorAll('.numpad button').forEach(btn=>{
+  btn.onclick=()=>{
+    const val = btn.textContent;
+    let current = walletDisplay.textContent;
+    if(val==="←"){ walletDisplay.textContent = current.slice(0,-1) || "0"; }
+    else if(val==="C"){ walletDisplay.textContent = "0"; }
+    else{ if(current==="0") current=""; walletDisplay.textContent = current + val; }
+  };
+});
+
+/* ====== 開始 ====== */
+document.getElementById('startBtn').addEventListener('click', ()=>{
+  const name = document.getElementById('nameInput').value.trim();
+  const w = Number(walletDisplay.textContent);
+  if(!name){ alert('プレイヤー名を入力してください'); return; }
+  if(!Number.isFinite(w) || w<=0){ alert('所持金を正しく入力してください'); return; }
+  playerName = name; wallet = Math.floor(w); cart={}; checkedOut=false;
+
+  startPanel.style.display='none';
+  shopPanel.style.display='block';
+  cartPanel.style.display='none';
+  finalPanel.style.display='none';
+  renderProducts(); updateCartCount();
+});
+
+/* ====== 商品：価格は表示しない ====== */
+function renderProducts(){
+  productGrid.innerHTML='';
+  products.forEach(p=>{
+    const card=document.createElement('div');
+    card.className='card';
+    card.innerHTML = `
+      <div style="font-weight:600">${p.name}</div>
+      <button class="btn blue" data-id="${p.id}">カートに入れる</button>
+    `;
+    card.querySelector('button').addEventListener('click', ()=>{
+      if(checkedOut) return;
+      cart[p.id] = (cart[p.id]||0)+1;
+      updateCartCount();
+    });
+    productGrid.appendChild(card);
+  });
+}
+function updateCartCount(){
+  const count = Object.values(cart).reduce((a,b)=>a+b,0);
+  cartCnt.textContent = count;
+}
+
+/* ====== カート ====== */
+document.getElementById('openCartBtn').addEventListener('click', ()=>{
+  buildCart();
+  cartPanel.style.display='block';
+  window.scrollTo({top:document.body.scrollHeight, behavior:'smooth'});
+});
+function buildCart(){
+  const ids = Object.keys(cart);
+  if(ids.length===0){
+    cartEmpty.style.display='block';
+    cartTable.style.display='none';
+    return;
+  }
+  cartEmpty.style.display='none';
+  cartTable.style.display='table';
+  cartBody.innerHTML='';
+  ids.forEach(id=>{
+    const p = products.find(x=>x.id===id);
+    const qty = cart[id];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${p.name}</td>
+      <td>${qty}</td>
+      <td>
+        <button data-act="inc" class="btn blue" style="padding:6px 10px;margin-right:6px">＋</button>
+        <button data-act="dec" class="btn" style="padding:6px 10px;background:#64748b;margin-right:6px">－</button>
+        <button data-act="del" class="btn red" style="padding:6px 10px">削除</button>
+      </td>
+    `;
+    tr.querySelectorAll('button').forEach(btn=>{
+      const act=btn.getAttribute('data-act');
+      btn.addEventListener('click', ()=>{
+        if(act==='inc') cart[id]++;
+        if(act==='dec') cart[id]=Math.max(0,cart[id]-1);
+        if(act==='del') delete cart[id];
+        if(cart[id]===0) delete cart[id];
+        updateCartCount();
+        buildCart();
+      });
+    });
+    cartBody.appendChild(tr);
+  });
+}
+
+/* ====== 会計 → レシート描画（税計算なし & 不足額表示） ====== */
+document.getElementById('checkoutBtn').addEventListener('click', ()=>{
+  if(checkedOut) return;
+  const items = Object.entries(cart).map(([id,qty])=>{
+    const p = products.find(x=>x.id===id);
+    return {...p, qty, subtotal:p.price*qty};
+  });
+  if(items.length===0){ alert('カートが空です'); return; }
+
+  const total = items.reduce((a,b)=>a+b.subtotal,0);
+  const qtySum= items.reduce((a,b)=>a+b.qty,0);
+  const remain= wallet - total;
+  const deficit = Math.max(0, total - wallet); // ← 不足額
+  const receiptNo = Math.random().toString(36).slice(2,8).toUpperCase();
+
+  // ヘッダー
+  rMeta.innerHTML = `
+    <div>日時</div><div>${nowStr()}</div>
+    <div>レシートNo</div><div>${receiptNo}</div>
+    <div>担当</div><div>CM-01</div>
+    <div>お客さま</div><div>${esc(playerName)}</div>
+  `;
+
+  // 明細
+  rItems.innerHTML = items.map(it => `
+    <div>
+      ${esc(it.name)} ×${it.qty}<br>
+      <small>@¥${yen(it.price)}</small>
+    </div>
+    <div style="text-align:right">¥${yen(it.subtotal)}</div>
+  `).join('');
+
+  // 合計のみ表示
+  rSum.innerHTML = `
+    <div class="r-strong">合計</div><div class="r-strong">¥${yen(total)}</div>
+    <div>お預り</div><div>¥${yen(wallet)}</div>
+    <div>おつり</div><div>¥${yen(Math.max(0, wallet-total))}</div>
+    <div>お買上点数</div><div>${qtySum} 点</div>
+  `;
+
+  // 結果（不足額の明示）
+  finalStatus.className = 'status ' + (remain<0 ? 'bad' : 'ok');
+  finalStatus.textContent =
+    remain<0 ? `💥 ゲームオーバー！所持金不足（不足額：¥${yen(deficit)}）` :
+    remain===0 ? '🎯 ピッタリ買い！' :
+    `✅ 会計完了 残額 ¥${yen(remain)}`;
+
+  // 画面遷移：レシートのみ
+  shopPanel.style.display='none';
+  cartPanel.style.display='none';
+  finalPanel.style.display='block';
+  checkedOut = true;
+});
+
+/* ====== 発行（画像保存：レシート部分のみ） ====== */
+document.getElementById('saveBtn').addEventListener('click', ()=>{
+  html2canvas(receiptPaper, {scale:2, backgroundColor:null}).then(canvas=>{
+    const a=document.createElement('a');
+    a.download=`receipt_${playerName}.png`;
+    a.href=canvas.toDataURL('image/png');
+    a.click();
+  });
+});
+
+/* ====== リトライ／リセット ====== */
+document.getElementById('retryBtn').addEventListener('click', ()=>{
+  cart={}; checkedOut=false; updateCartCount();
+  finalPanel.style.display='none';
+  shopPanel.style.display='block';
+});
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  playerName=''; wallet=null; cart={}; checkedOut=false;
+  document.getElementById('nameInput').value='';
+  walletDisplay.textContent='0';
+  finalPanel.style.display='none';
+  shopPanel.style.display='none';
+  cartPanel.style.display='none';
+  startPanel.style.display='block';
+});
+</script>
+</body>
+</html>
