@@ -90,6 +90,10 @@
     .receipt{box-shadow:none}
     .footer{display:none}
   }
+  /* --- カテゴリタブ --- */
+  .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .tab{border:1px solid var(--border);background:#f3f4f6;color:#111;border-radius:999px;padding:6px 12px;cursor:pointer}
+  .tab.active{background:var(--btn2);color:#fff;border-color:transparent}
 </style>
 </head>
 <body>
@@ -97,7 +101,7 @@
 
   <!-- 1) スタート画面（名前＋テンキー所持金） -->
   <div id="startPanel" class="panel">
-    <h1>🛒 買い物シミュレーター</h1>
+    <h1>🛒 買い物シミュレーター(マックスバリュ津城山)</h1>
     <p>プレイヤー名と所持金を入力してください。</p>
     <div class="row">
       <div>
@@ -123,6 +127,8 @@
   <!-- 2) 商品リスト（価格非表示） -->
   <div id="shopPanel" class="panel" style="display:none">
     <h2>商品リスト</h2>
+    <div id="categoryTabs" class="tabs" role="tablist" aria-label="商品カテゴリ"></div>
+    <div style="height:4px"></div>
     <button id="openCartBtn" class="btn blue cart-btn">カート <span id="cartCount" class="cart-count">0</span></button>
     <div id="productGrid" class="grid" style="margin-top:14px"></div>
   </div>
@@ -168,17 +174,131 @@
 <!-- html2canvas（画像保存用） -->
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script>
-/* ====== 設定：価格は内部のみ ====== */
-const products = [
-  { id:'p_apple',   name:'りんご',      price:120 },
-  { id:'p_banana',  name:'バナナ',      price:90  },
-  { id:'p_bread',   name:'食パン',      price:180 },
-  { id:'p_milk',    name:'牛乳',        price:160 },
-  { id:'p_snack',   name:'お菓子',      price:150 },
-  { id:'p_water',   name:'水(2L)',      price:100 },
-  { id:'p_bento',   name:'お弁当',      price:498 },
-];
+/* ====== カテゴリ（内部キーと表示名） ====== */
+const CATEGORY_LABELS = {
+  all:    "すべて",
+  yasai:  "野菜・果物",
+  niku:   "肉・魚",
+  souzai: "総菜・お弁当",
+  okashi: "お菓子",
+  inryo:  "飲料",
+  sonota: "その他",
+};
+/* タブ表示順 */
+const CATEGORY_ORDER = ["all","yasai","niku","souzai","okashi","inryo","sonota"];
 
+// ...CATEGORY_LABELS と CATEGORY_ORDER の下に置く
+const products = [
+  { id:"p_cab",  name:"キャベツ（1玉）",   price:198, cat:"yasai"  },
+  { id:"p_cabhalf",  name:"キャベツ（半玉）",   price:108, cat:"yasai"  },
+  { id:"p_br",  name:"ブロッコリー（1株）",   price:298, cat:"yasai"  },
+  { id:"p_ab",  name:"アボカド",   price:198, cat:"yasai"  },
+  { id:"p_hr",  name:"ほうれん草",   price:258, cat:"yasai"  },
+  { id:"p_komatuna",  name:"小松菜",   price:138, cat:"yasai"  },
+  { id:"p_nira",  name:"にら",   price:158, cat:"yasai"  },
+  { id:"p_dai",  name:"大根（1本）",   price:298, cat:"yasai"  },
+  { id:"p_haku",  name:"白菜（1/4）",   price:128, cat:"yasai"  },
+  { id:"p_kaiware",  name:"かいわれ大根（1パック）",   price:48, cat:"yasai"  },
+  { id:"p_enoki",  name:"えのき",   price:98, cat:"yasai"  },
+  { id:"p_buna",  name:"ぶなしめじ",   price:128, cat:"yasai"  },
+  { id:"p_mai",  name:"マイタケ",   price:108, cat:"yasai"  },
+  { id:"p_eri",  name:"エリンギ",   price:98, cat:"yasai"  },
+  { id:"p_moya",  name:"もやし",   price:28, cat:"yasai"  },
+  { id:"p_zyaga",  name:"じゃがいも（1個）",   price:58, cat:"yasai"  },
+  { id:"p_zyagaset",  name:"じゃがいも（6個1袋）",   price:258, cat:"yasai"  },
+  { id:"p_tama",  name:"玉ねぎ（1個）",   price:78, cat:"yasai"  },
+  { id:"p_tamaset",  name:"玉ねぎ（3個1ネット）",   price:258, cat:"yasai"  },
+  { id:"p_ninn",  name:"にんじん（1個）",   price:98, cat:"yasai"  },
+  { id:"p_ninnset",  name:"にんじん（3個1袋）",   price:198, cat:"yasai"  },
+  { id:"p_kyoho",  name:"ぶどう（たねなし巨峰）",   price:798, cat:"yasai"  },
+  { id:"p_shine",  name:"シャインマスカット",   price:1580, cat:"yasai"  },
+  { id:"p_nasi",  name:"なし",   price:298, cat:"yasai"  },
+  { id:"p_kiui",  name:"キウイ",   price:118, cat:"yasai"  },
+  { id:"p_mikan",  name:"早出しみかん1袋（Mサイズ）",   price:598, cat:"yasai"  },
+  { id:"p_bana",  name:"バナナ（1房）",   price:198, cat:"yasai"  },
+  { id:"p_app",  name:"りんご",   price:198, cat:"yasai"  },
+
+  { id:"p_usisute",  name:"黒毛和牛ロースステーキ用1枚（170g）",   price:1186, cat:"niku"  },
+  { id:"p_usikiriotosi",  name:"黒毛和牛切り落とし400g入1パック",   price:1592, cat:"niku"  },
+  { id:"p_usikoma",  name:"国産牛小間切れ（155g）",   price:598, cat:"niku"  },
+  { id:"p_usihoru",  name:"牛ホルモン（180g）",   price:458, cat:"niku"  },
+  { id:"p_butabara",  name:"伊勢うまし豚ばらスライス（100g）",   price:328, cat:"niku"  },
+  { id:"p_butakoma",  name:"伊勢うまし豚小間切れ（100g）",   price:198, cat:"niku"  },
+  { id:"p_butasya",  name:"国産豚肉ロースしゃぶしゃぶ用（200g）",   price:356, cat:"niku"  },
+  { id:"p_torimomo",  name:"国産若鳥もも肉（300g）",   price:294, cat:"niku"  },
+  { id:"p_torisasa",  name:"国産若鳥ささみ肉（200g）",   price:316, cat:"niku"  },
+  { id:"p_torimune",  name:"国産若鳥皮なしむね肉（300g）",   price:384, cat:"niku"  },
+  { id:"p_ubmin",  name:"国産牛豚ミンチ（200g）",   price:456, cat:"niku"  },
+  { id:"p_bmin",  name:"国産豚ミンチ（200g）",   price:256, cat:"niku"  },
+  { id:"p_torimin",  name:"国産若鶏むね・皮ミンチ（200g）",   price:276, cat:"niku"  },
+  { id:"p_gyoukawa",  name:"餃子の皮（30枚）",   price:90, cat:"niku"  },
+  { id:"p_kiha",  name:"台湾産解凍きはだまぐろ刺身用150g",   price:597, cat:"niku"  },
+  { id:"p_tataki",  name:"国内産かつおたたき刺身（150g）",   price:342, cat:"niku"  },
+  { id:"p_ika",  name:"フィリピン産解凍たるいか刺身用（100g）",   price:438, cat:"niku"  },
+  { id:"p_kaibasira",  name:"北海道産ホタテ貝柱生食用（100g）",   price:638, cat:"niku"  },
+  { id:"p_buri",  name:"愛媛県産ぶり切身1切れ",   price:418, cat:"niku"  },
+  { id:"p_madai",  name:"三重県産養殖真鯛切身1切れ",   price:350, cat:"niku"  },
+  { id:"p_tara",  name:"北海道産真たら切身1切れ",   price:208, cat:"niku"  },
+  { id:"p_panamei",  name:"インドネシア産パナメイむきえび（130g）",   price:398, cat:"niku"  },
+  { id:"p_unagi",  name:"国産うなぎかば焼き1尾",   price:1980, cat:"niku"  },
+  { id:"p_kireunagi",  name:"国産切れてるうなぎかば焼き1尾",   price:1980, cat:"niku"  },
+  { id:"p_uinnner",  name:"シャウエッセン",   price:398, cat:"niku"  },
+  { id:"p_bacon",  name:"ブロックベーコン",   price:298, cat:"niku"  },
+  { id:"p_",  name:"ロースハム4袋つづり",   price:278, cat:"niku"  },
+
+  { id:"p_ontama",  name:"温泉卵3個入り",   price:158, cat:"souzai"  },
+  { id:"p_maka",  name:"トップバリュマカロニサラダ",   price:128, cat:"souzai"  },
+  { id:"p_pote",  name:"トップバリュポテサラ",   price:128, cat:"souzai"  },
+  { id:"p_tikuten",  name:"ちくわ天1本",   price:88, cat:"souzai"  },
+  { id:"p_satuma",  name:"さつま芋の天ぷら1枚",   price:138, cat:"souzai"  },
+  { id:"p_mori",  name:"7種の天ぷら盛り合わせ",   price:398, cat:"souzai"  },
+  { id:"p_koro",  name:"トップバリュコロッケ（5個入り）",   price:298, cat:"souzai"  },
+  { id:"p_yakitori",  name:"焼き鳥（もも・皮・ねぎま種類問わず2本）",   price:240, cat:"souzai"  },
+  { id:"p_sushi",  name:"握りずし（華雅）",   price:798, cat:"souzai"  },
+  { id:"p_edamame",  name:"トップバリュ枝豆100g",   price:138, cat:"souzai"  },
+  { id:"p_taokosu",  name:"タコの酢の物",   price:198, cat:"souzai"  },
+
+  { id:"p_ritu",  name:"リッツクラッカー箱",   price:218, cat:"okashi"  },
+  { id:"p_oreo",  name:"オレオ箱",   price:198, cat:"okashi"  },
+  { id:"p_country",  name:"カントリーマアム厳選12枚入り",   price:258, cat:"okashi"  },
+  { id:"p_choco",  name:"ガーナ板チョコ",   price:198, cat:"okashi"  },
+  { id:"p_whitechoco",  name:"明治ホワイトチョコ",   price:228, cat:"okashi"  },
+  { id:"p_hargen",  name:"ハーゲンダッツ",   price:298, cat:"okashi"  },
+  { id:"p_mow",  name:"MOW",   price:128, cat:"okashi"  },
+  { id:"p_garigari",  name:"ガリガリ君",   price:68, cat:"okashi"  },
+
+
+  { id:"p_gyuunyu",  name:"明治おいしい牛乳900ml",   price:258, cat:"inryo"  },
+  { id:"p_tya",  name:"おーいお茶2L",   price:168, cat:"inryo"  },
+  { id:"p_coffee",  name:"uccカップコーヒー5カップ",   price:208, cat:"inryo"  },
+  { id:"p_coke",  name:"コカ・コーラ1.5L",   price:178, cat:"inryo"  },
+  { id:"p_juice",  name:"家族の潤いジュース（味色々）",   price:118, cat:"inryo"  },
+  { id:"p_yasaijuice",  name:"カゴメ野菜生活0.9L",   price:258, cat:"inryo"  },
+
+  { id:"p_egg",  name:"たまごMサイズ（10個入）",   price:278, cat:"sonota"  },
+  { id:"p_tohu",  name:"豆腐1丁（木綿or絹）",   price:58, cat:"sonota"  },
+  { id:"p_age",  name:"ベストプライスきざみあげ",   price:98, cat:"sonota"  },
+  { id:"p_nattou",  name:"ベストプライス納豆",   price:78, cat:"sonota"  },
+  { id:"p_konn",  name:"ベストプライスこんにゃく",   price:98, cat:"sonota"  },
+  { id:"p_itokon",  name:"ベストプライス糸こんにゃく",   price:98, cat:"sonota"  },
+  { id:"p_tiku",  name:"ちくわ5本",   price:98, cat:"sonota"  },
+  { id:"p_kanikama",  name:"かにかま",   price:98, cat:"sonota"  },
+  { id:"p_maruyaki",  name:"マルちゃん焼きそば3食入",   price:198, cat:"sonota"  },
+  { id:"p_soume",  name:"揖保乃糸",   price:348, cat:"sonota"  },
+  { id:"p_soba",  name:"ベストプライスそば乾麺（100g×4）",   price:228, cat:"sonota"  },
+  { id:"p_pasuta",  name:"トップバリュパスタ500g",   price:128, cat:"sonota"  },
+  { id:"p_udon",  name:"ゆでうどん200g",   price:38, cat:"sonota"  },
+  { id:"p_makaroni",  name:"トップバリュマカロニ200g",   price:118, cat:"sonota"  },
+  { id:"p_curry",  name:"こくまろカレー",   price:178, cat:"sonota"  },
+  { id:"p_sityuu",  name:"エスビー濃いシチュー",   price:258, cat:"sonota"  },
+  { id:"p_nabe",  name:"プチッと鍋",   price:278, cat:"sonota"  },
+  { id:"p_syokupan",  name:"パスコ超熟",   price:178, cat:"sonota"  },
+  { id:"p_yogur",  name:"ブルガリアヨーグルト400g",   price:188, cat:"sonota"  },
+  { id:"p_bata",  name:"北海道バター200g",   price:548, cat:"sonota"  },
+  { id:"p_magari",  name:"ネオソフトマーガリン300g",   price:228, cat:"sonota"  },
+
+
+];
 let wallet=null, playerName='', cart={}, checkedOut=false;
 
 /* ====== 要素 ====== */
@@ -188,6 +308,7 @@ const cartPanel=document.getElementById('cartPanel');
 const finalPanel=document.getElementById('finalPanel');
 
 const productGrid=document.getElementById('productGrid');
+const categoryTabs = document.getElementById('categoryTabs');
 const cartCnt=document.getElementById('cartCount');
 const cartBody=document.getElementById('cartBody');
 const cartEmpty=document.getElementById('cartEmpty');
@@ -243,13 +364,51 @@ document.getElementById('startBtn').addEventListener('click', ()=>{
   shopPanel.style.display='block';
   cartPanel.style.display='none';
   finalPanel.style.display='none';
-  renderProducts(); updateCartCount();
+  renderCategoryTabs();enderProducts();updateCartCount();
 });
 
-/* ====== 商品：価格は表示しない ====== */
+/* ====== カテゴリタブ生成＆選択状態 ====== */
+let activeCategory = "all"
+
+function renderCategoryTabs(){
+  categoryTabs.innerHTML = '';
+  CATEGORY_ORDER.forEach(key=>{
+    const btn = document.createElement('button');
+    btn.className = 'tab' + (key===activeCategory ? ' active' : '');
+    btn.setAttribute('role','tab');
+    btn.setAttribute('aria-selected', String(key===activeCategory));
+    btn.textContent = CATEGORY_LABELS[key];
+    btn.addEventListener('click', ()=>{
+      activeCategory = key;
+      renderCategoryTabs();
+      renderProducts();
+    });
+    categoryTabs.appendChild(btn);
+  });
+}
+
+
+/* ====== 商品（カテゴリ別に表示。価格は表示しない） ====== */
 function renderProducts(){
   productGrid.innerHTML='';
-  products.forEach(p=>{
+  // 選択中カテゴリの商品に絞り込み
+  // 選択中カテゴリの商品に絞り込み（"all" は全件）
+  const list = (activeCategory === "all")
+    ? products.slice()
+    : products.filter(p => p.cat === activeCategory);
+
+
+  // カテゴリ内に商品が無い場合のメッセージ
+  if(list.length === 0){
+    const msg = document.createElement('div');
+    msg.className = 'card';
+    msg.textContent = 'このカテゴリの商品はありません。';
+    productGrid.appendChild(msg);
+    return;
+  }
+
+  // カードを描画
+  list.forEach(p=>{
     const card=document.createElement('div');
     card.className='card';
     card.innerHTML = `
@@ -264,6 +423,7 @@ function renderProducts(){
     productGrid.appendChild(card);
   });
 }
+
 function updateCartCount(){
   const count = Object.values(cart).reduce((a,b)=>a+b,0);
   cartCnt.textContent = count;
